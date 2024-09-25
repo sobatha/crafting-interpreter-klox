@@ -14,7 +14,7 @@ fun main(args: Array<String>) {
         listOf(
             "Binary ; left: Expr, operator: Token, right: Expr",
             "Grouping ; value: Object",
-            "Unary ; Token operator, Expr right"
+            "Unary ; operator: Expr, right: Expr"
         )
     )
 }
@@ -29,14 +29,29 @@ private fun defineAst(outputDir: String, baseName: String, types: List<String>) 
                 "import org.example.lexer.Token"
     )
     writer.println("abstract class $baseName {\n")
+
+    defineVisitor(writer, baseName, types)
+
     for (type in types) {
         val className = type.split(";")[0].trim()
         val fields = type.split(";")[1].trim()
         defineType(writer, baseName, className, fields)
     }
+
+    writer.println("\n")
+    writer.println("\tabstract <R> fun accept(visitor: Visitor<R>): R")
     writer.println("}\n")
 
     writer.close()
+}
+
+fun defineVisitor(writer: PrintWriter, baseName: String, types: List<String>) {
+    writer.println("\tinterface Visitor<R> {")
+
+    for (type in types) {
+        val typeName = type.split(";")[0].trim()
+        writer.println("\tfun visit$typeName$baseName(${baseName.toLowerCase()}: $typeName): R\n\t}")
+    }
 }
 
 private fun defineType(writer: PrintWriter, baseName: String, className: String, fields: String) {
@@ -45,6 +60,10 @@ private fun defineType(writer: PrintWriter, baseName: String, className: String,
     for (field in fieldList) {
         writer.println("val $field, ")
     }
-    writer.println("): $baseName()")
+    writer.println("): $baseName() {")
+    writer.println();
+    writer.println("    @Override");
+    writer.println("    fun <R> accept(visitor: Visitor<R>): R {");
+    writer.println("      return visitor.visit$className$baseName(this)");
+    writer.println("    }");
 }
-

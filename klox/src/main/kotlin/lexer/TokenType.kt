@@ -17,9 +17,9 @@ enum class TokenType {
 
 data class Token(
     val type: TokenType,
-    val line: Int,
     val lexeme: String = "",
     val literal: Any? = null,
+    val line: Int,
 )
 
 val singleCharTokens = mapOf(

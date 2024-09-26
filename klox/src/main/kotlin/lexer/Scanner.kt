@@ -17,7 +17,7 @@ class Scanner(private val source: String) {
             scanToken()
         }
 
-        tokens.add(Token(TokenType.EOF, line))
+        tokens.add(Token(type = TokenType.EOF, line = line))
         return tokens
     }
 
@@ -45,7 +45,7 @@ class Scanner(private val source: String) {
     }
 
     private fun addToken(type: TokenType, literal: Any? = null) =
-        tokens.add(Token(type, line, source.substring(start, current), literal))
+        tokens.add(Token(type = type, lexeme = source.substring(start, current), literal = literal, line = line))
 
     private fun handleTwoCharToken(c: Char) {
         val tokenType = when (c) {
@@ -81,7 +81,7 @@ class Scanner(private val source: String) {
             advance()
         }
         if (isAtEnd) {
-            ErrorReport.reportError(line, where= "", "Unterminated string.")
+            ErrorReport.reportError(line, where = "", "Unterminated string.")
             return
         }
         advance() // Consume closing '"'

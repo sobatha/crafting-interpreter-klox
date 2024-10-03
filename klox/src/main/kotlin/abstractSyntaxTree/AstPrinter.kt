@@ -2,7 +2,6 @@ package org.example.abstractSyntaxTree
 
 import org.example.lexer.Token
 import org.example.lexer.TokenType
-import kotlin.math.E
 
 class AstPrinter(): Expr.Visitor<String> {
     fun print(expr: Expr) = expr.accept(this)
@@ -68,7 +67,7 @@ fun main() {
     val expr = Expr.Binary(
         Expr.Unary(Token(TokenType.MINUS, "-", null, 1), Expr.Literal(123)),
         Token(TokenType.STAR, "*", null, 1),
-        Expr.Grouping(Expr.Literal(45.67))
+        Expr.Grouping(Expr.Literal(45.67)),
     )
 
     println(AstPrinter().print(expr))

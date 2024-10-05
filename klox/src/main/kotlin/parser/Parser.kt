@@ -22,7 +22,7 @@ class Parser(private val tokens: List<Token>) {
     private fun expression(): Expr = assignment()
 
     private fun assignment(): Expr {
-        val expr = equality()
+        val expr = or()
 
         if (match(EQUAL)) {
             val equals = previous()
@@ -33,6 +33,30 @@ class Parser(private val tokens: List<Token>) {
                 return Expr.Assign(name, value)
             }
             throw Error("$equals, Invalid assignment target")
+        }
+
+        return expr
+    }
+
+    private fun or(): Expr {
+        var expr = and()
+
+        while (match(OR)) {
+            val operator = previous()
+            val right = and()
+            expr = Expr.Logical(expr, operator, right)
+        }
+
+        return expr
+    }
+
+    private fun and(): Expr {
+        var expr = equality()
+
+        while (match(AND)) {
+            val operator = previous()
+            val right = equality()
+            expr = Expr.Logical(expr, operator, right)
         }
 
         return expr
@@ -50,10 +74,50 @@ class Parser(private val tokens: List<Token>) {
     }
 
     private fun statement(): Stmt = when {
+        match(FOR) -> forStatement()
         match(IF) -> ifStatement()
         match(PRINT) -> printStatement()
+        match(WHILE) -> whileStatement()
         match(LEFT_BRACE) -> Stmt.Block(block())
         else -> expressionStatement()
+    }
+
+    private fun forStatement(): Stmt {
+        consume(LEFT_PAREN, "Expect '(' after for")
+        val initializer = when {
+            match(SEMICOLON) -> null
+            match(VAR) -> varDeclaration()
+            else -> expressionStatement()
+        }
+
+        var condition = if (!check(SEMICOLON)) expression() else null
+        consume(SEMICOLON, "Expect ';' after loop condition")
+
+        val increment = if (!check(RIGHT_PAREN)) expression() else null
+        consume(RIGHT_PAREN, "Expect ')' after for clause")
+
+        var body = statement()
+
+        if (increment != null) {
+            body = Stmt.Block(listOf(body, Stmt.Expression(increment)))
+        }
+
+        if (condition == null) condition = Expr.Literal(true)
+        body = Stmt.While(condition, body)
+
+        if (initializer != null) body = Stmt.Block(listOf(initializer, body))
+
+        return body
+    }
+
+    private fun whileStatement(): Stmt {
+        consume(LEFT_PAREN, "Expect '(' after while")
+        val condition = expression()
+        consume(RIGHT_PAREN, "Expect ')' after condition")
+
+        val body = statement()
+
+        return Stmt.While(condition, body)
     }
 
     private fun ifStatement(): Stmt {
@@ -141,7 +205,33 @@ class Parser(private val tokens: List<Token>) {
             return Expr.Unary(operator, right)
         }
 
-        return primary()
+        return call()
+    }
+
+    private fun call(): Expr {
+        var expr = primary()
+
+        while (true) {
+            if (match(LEFT_PAREN)) {
+                expr = finishCall(expr)
+            } else break
+        }
+
+        return expr
+    }
+
+    private fun finishCall(callee: Expr): Expr {
+        val arguments: MutableList<Expr> = mutableListOf()
+        if (!check(RIGHT_PAREN)) {
+            do {
+                if (arguments.size >= 255) throw Exception("Can't have more than 255 arguments")
+                arguments.add(expression())
+            } while (match(COMMA))
+        }
+
+        val paren = consume(RIGHT_PAREN, "Expect ')' after arguments")
+
+        return Expr.Call(callee, paren, arguments)
     }
 
     private fun primary(): Expr {
@@ -150,6 +240,11 @@ class Parser(private val tokens: List<Token>) {
         if (match(NIL)) return Expr.Literal(null)
 
         if (match(NUMBER, STRING)) return Expr.Literal(previous().literal)
+
+        if (match(IDENTIFIER)) {
+            return Expr.Variable(previous())
+        }
+
         if (match(LEFT_PAREN)) {
             val expr = expression()
             consume(RIGHT_PAREN, "Expect ')' after expression.")

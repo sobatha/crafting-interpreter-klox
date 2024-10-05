@@ -57,8 +57,14 @@ class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
     override fun visitLiteralExpr(expr: Expr.Literal): Any? =
         expr.value
 
-    override fun visitLogicalExpr(expr: Expr.Logical): Any? =
-        evaluate(expr)
+    override fun visitLogicalExpr(expr: Expr.Logical): Any? {
+        val left = evaluate(expr.left)
+
+        if (expr.operator.type == OR) {
+            if (isTruthy(left)) return left
+        } else if (isTruthy(left)) return left
+        return evaluate(expr.right)
+    }
 
     override fun visitSetExpr(expr: Expr.Set): Any? =
         evaluate(expr)
@@ -128,7 +134,9 @@ class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
     }
 
     override fun visitWhileStmt(stmt: Stmt.While) {
-        TODO("Not yet implemented")
+        while (isTruthy(evaluate(stmt.condition))) {
+            execute(stmt.body)
+        }
     }
 
     private fun execute(stmt: Stmt) {

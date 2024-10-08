@@ -1,13 +1,30 @@
 package org.example.Interpreter
 
+import org.example.Callable.LoxCallable
+import org.example.Callable.LoxFunction
+import org.example.Callable.Return
 import org.example.abstractSyntaxTree.Environment
 import org.example.abstractSyntaxTree.Expr
 import org.example.abstractSyntaxTree.Stmt
+import org.example.lexer.Token
 import org.example.lexer.TokenType.*
 
 
 class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
-    private var environment = Environment()
+    private val globals = Environment()
+    private var environment = globals
+    private val locals = mutableMapOf<Expr, Int>()
+
+    init {
+        class Clock() : LoxCallable {
+            override fun arity() = 0
+            override fun call(interpreter: Interpreter, arguments: List<Any?>) =
+                System.currentTimeMillis() / 1000.0
+
+            override fun toString(): String = "<native fun>"
+        }
+        globals.define("clock", Clock())
+    }
 
     fun interpret(statements: List<Stmt>) {
         statements.map { execute(it) }
@@ -15,7 +32,9 @@ class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
 
     override fun visitAssignExpr(expr: Expr.Assign): Any? {
         val value = evaluate(expr.value)
-        environment.assign(expr.name, value)
+        val distance = locals[expr]
+        distance?.let { environment.assignAt(distance, expr.name, value) }
+            ?: globals.assign(expr.name, value)
         return value
     }
 
@@ -43,8 +62,16 @@ class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
         }
     }
 
-    override fun visitCallExpr(expr: Expr.Call): Any {
-        TODO("Not yet implemented")
+    override fun visitCallExpr(expr: Expr.Call): Any? {
+        val callee = evaluate(expr.callee)
+
+        val arguments = mutableListOf<Any?>()
+        expr.arguments.map { arguments.add(evaluate(it)) }
+        val function = callee as? LoxCallable ?: throw Exception("$callee is not callable")
+
+        if (arguments.size != function.arity())
+            throw Exception("Expected ${function.arity()} arguments but got ${arguments.size}.")
+        return function.call(this, arguments)
     }
 
     override fun visitGetExpr(expr: Expr.Get): Any {
@@ -93,7 +120,12 @@ class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
     }
 
     override fun visitVariableExpr(expr: Expr.Variable): Any? {
-        return environment.get(expr.name)
+        return lookUpVariable(expr.name, expr)
+    }
+
+    private fun lookUpVariable(name: Token, expr: Expr.Variable): Any? {
+        val distance = locals[expr]
+        return distance?.let { environment.getAt(distance, name.lexeme) } ?: globals.get(name)
     }
 
     override fun visitBlockStmt(stmt: Stmt.Block) {
@@ -109,7 +141,8 @@ class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
     }
 
     override fun visitFunctionStmt(stmt: Stmt.Function) {
-        TODO("Not yet implemented")
+        val function = LoxFunction(stmt, environment)
+        environment.define(stmt.name.lexeme, function)
     }
 
     override fun visitIfStmt(stmt: Stmt.If) {
@@ -125,7 +158,8 @@ class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
     }
 
     override fun visitReturnStmt(stmt: Stmt.Return) {
-        TODO("Not yet implemented")
+        val value = if (stmt.value != null) evaluate(stmt.value) else null
+        throw Return(value)
     }
 
     override fun visitVarStmt(stmt: Stmt.Var) {
@@ -147,7 +181,9 @@ class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
         return expr.accept(this)
     }
 
-    private fun executeBlock(statements: List<Stmt>, environment: Environment) {
+    fun resolve(expr: Expr, depth: Int) = locals.put(expr, depth)
+
+    fun executeBlock(statements: List<Stmt>, environment: Environment) {
         val previous = this.environment
 
         try {

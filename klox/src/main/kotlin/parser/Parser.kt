@@ -62,8 +62,11 @@ class Parser(private val tokens: List<Token>) {
         return expr
     }
 
-    private fun declaration(): Stmt =
-        if (match(VAR)) varDeclaration() else statement()
+    private fun declaration(): Stmt = when {
+        (match(FUN)) -> function("function");
+        (match(VAR)) -> varDeclaration()
+        else -> statement()
+    }
 
     private fun varDeclaration(): Stmt {
         val name = consume(IDENTIFIER, "expect var name")
@@ -77,9 +80,17 @@ class Parser(private val tokens: List<Token>) {
         match(FOR) -> forStatement()
         match(IF) -> ifStatement()
         match(PRINT) -> printStatement()
+        match(RETURN) -> returnStatement()
         match(WHILE) -> whileStatement()
         match(LEFT_BRACE) -> Stmt.Block(block())
         else -> expressionStatement()
+    }
+
+    private fun returnStatement(): Stmt {
+        val keyword = previous()
+        var value = if (!check(SEMICOLON)) expression() else null
+        consume(SEMICOLON, "Expect ';' after return value")
+        return Stmt.Return(keyword, value)
     }
 
     private fun forStatement(): Stmt {
@@ -145,6 +156,22 @@ class Parser(private val tokens: List<Token>) {
         val expr = expression()
         consume(SEMICOLON, "Expect ';' after value")
         return Stmt.Expression(expr)
+    }
+
+    private fun function(kind: String): Stmt.Function {
+        val name = consume(IDENTIFIER, "Expect $kind name.")
+        consume(LEFT_PAREN, "Expect '(' after $kind name.")
+        val parameters = mutableListOf<Token>()
+        if (!check(RIGHT_PAREN)) {
+            do {
+                if (parameters.size >= 255) throw Exception("Can't have more than 255 parameters")
+                parameters.add(consume(IDENTIFIER, "Expect parameter name."))
+            } while (match(COMMA))
+        }
+        consume(RIGHT_PAREN, "Expect ')' after parameters")
+        consume(LEFT_BRACE, "Expect { before $kind body.")
+        val body = block()
+        return Stmt.Function(name, parameters, body)
     }
 
     private fun printStatement(): Stmt {

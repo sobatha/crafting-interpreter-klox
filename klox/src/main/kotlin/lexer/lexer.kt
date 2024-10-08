@@ -1,6 +1,7 @@
 package org.example.lexer
 
 import org.example.Interpreter.Interpreter
+import org.example.Interpreter.Resolver
 import org.example.Parser.Parser
 import java.nio.charset.Charset
 import java.nio.file.Files
@@ -40,7 +41,8 @@ private fun run(source: String) {
 
     val interpreter = Interpreter()
     val statements = parser.parse()
-
+    val resolver = Resolver(interpreter)
+    resolver.resolve(statements)
     interpreter.interpret(statements)
 }
 

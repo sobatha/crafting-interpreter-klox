@@ -8,14 +8,21 @@ import java.util.Stack
 
 class Resolver(private val interpreter: Interpreter) : Expr.Visitor<Unit>, Stmt.Visitor<Unit> {
     private enum class FunctionType {
-        NONE, FUNCTION
+        NONE, FUNCTION, METHOD, INITIALIZER
     }
+
+    private enum class ClassType {
+        NONE, CLASS
+    }
+
+    private var currentClass: ClassType = ClassType.NONE
 
     private val scopes: Stack<MutableMap<String, Boolean>> = Stack()
     private var currentFunction = FunctionType.NONE
 
-    override fun visitAssignExpr(expr: Expr.Assign): Unit? {
-        TODO()
+    override fun visitAssignExpr(expr: Expr.Assign) {
+        resolve(expr.value)
+        resolveLocal(expr, expr.name)
     }
 
     override fun visitBinaryExpr(expr: Expr.Binary) {
@@ -29,7 +36,7 @@ class Resolver(private val interpreter: Interpreter) : Expr.Visitor<Unit>, Stmt.
     }
 
     override fun visitGetExpr(expr: Expr.Get) {
-        TODO("Not yet implemented")
+        resolve(expr.obj)
     }
 
     override fun visitGroupingExpr(expr: Expr.Grouping) {
@@ -44,7 +51,8 @@ class Resolver(private val interpreter: Interpreter) : Expr.Visitor<Unit>, Stmt.
     }
 
     override fun visitSetExpr(expr: Expr.Set) {
-        TODO("Not yet implemented")
+        resolve(expr.value)
+        resolve(expr.obj)
     }
 
     override fun visitSuperExpr(expr: Expr.Super) {
@@ -52,7 +60,8 @@ class Resolver(private val interpreter: Interpreter) : Expr.Visitor<Unit>, Stmt.
     }
 
     override fun visitThisExpr(expr: Expr.This) {
-        TODO("Not yet implemented")
+        if (currentClass == ClassType.NONE) throw Exception("Can't use 'this' outside of a class")
+        resolveLocal(expr, expr.keyword)
     }
 
     override fun visitUnaryExpr(expr: Expr.Unary) {
@@ -66,7 +75,7 @@ class Resolver(private val interpreter: Interpreter) : Expr.Visitor<Unit>, Stmt.
         resolveLocal(expr, expr.name)
     }
 
-    private fun resolveLocal(expr: Expr.Variable, name: Token) {
+    private fun resolveLocal(expr: Expr, name: Token) {
         for (i in scopes.size downTo 0) {
             if (scopes[i].containsKey(name.lexeme)) {
                 interpreter.resolve(expr, scopes.size - 1 - i)
@@ -97,7 +106,23 @@ class Resolver(private val interpreter: Interpreter) : Expr.Visitor<Unit>, Stmt.
     }
 
     override fun visitClassStmt(stmt: Stmt.Class) {
-        TODO("Not yet implemented")
+        val enclosingClass = currentClass
+        currentClass = ClassType.CLASS
+
+        declare(stmt.name)
+        define(stmt.name)
+
+        beginScope()
+        scopes.peek()["this"] = true
+
+        stmt.methods.map {
+            val type = if (it.name.lexeme == "init") FunctionType.INITIALIZER else FunctionType.METHOD
+            resolveFunction(it, type)
+        }
+
+        endScope()
+
+        currentClass = enclosingClass
     }
 
     override fun visitExpressionStmt(stmt: Stmt.Expression) {
@@ -135,7 +160,10 @@ class Resolver(private val interpreter: Interpreter) : Expr.Visitor<Unit>, Stmt.
 
     override fun visitReturnStmt(stmt: Stmt.Return) {
         if (currentFunction == FunctionType.NONE) throw Exception("Can't return from top-level code")
-        stmt.value?.let { resolve(it) }
+        stmt.value?.let {
+            if (currentFunction == FunctionType.INITIALIZER) throw Error("Can't return a value from an initializer")
+            resolve(it)
+        }
     }
 
     override fun visitVarStmt(stmt: Stmt.Var) {

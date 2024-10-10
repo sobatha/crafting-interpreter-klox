@@ -28,13 +28,12 @@ class Parser(private val tokens: List<Token>) {
             val equals = previous()
             val value = assignment()
 
-            if (expr is Expr.Variable) {
-                val name = expr.name
-                return Expr.Assign(name, value)
+            return when (expr) {
+                is Expr.Variable -> Expr.Assign(expr.name, value)
+                is Expr.Get -> Expr.Set(expr.obj, expr.name, value)
+                else -> throw Error("$equals, Invalid assignment target")
             }
-            throw Error("$equals, Invalid assignment target")
         }
-
         return expr
     }
 
@@ -63,9 +62,20 @@ class Parser(private val tokens: List<Token>) {
     }
 
     private fun declaration(): Stmt = when {
+        (match(CLASS)) -> classDeclaration()
         (match(FUN)) -> function("function");
         (match(VAR)) -> varDeclaration()
         else -> statement()
+    }
+
+    private fun classDeclaration(): Stmt {
+        val name = consume(IDENTIFIER, "Expect class name after class.")
+        consume(LEFT_BRACE, "Expect '{' before class body.")
+
+        val methods = mutableListOf<Stmt.Function>()
+        while (!check(RIGHT_BRACE) && !isAtEnd()) methods.add(function("method"))
+        consume(RIGHT_BRACE, "Expect '}' after class body.")
+        return Stmt.Class(name, methods)
     }
 
     private fun varDeclaration(): Stmt {
@@ -241,7 +251,12 @@ class Parser(private val tokens: List<Token>) {
         while (true) {
             if (match(LEFT_PAREN)) {
                 expr = finishCall(expr)
-            } else break
+            } else if (match(DOT)) {
+                val name = consume(IDENTIFIER, "Expect property name after '.'")
+                expr = Expr.Get(expr, name)
+            } else {
+                break
+            }
         }
 
         return expr
@@ -261,24 +276,21 @@ class Parser(private val tokens: List<Token>) {
         return Expr.Call(callee, paren, arguments)
     }
 
-    private fun primary(): Expr {
-        if (match(FALSE)) return Expr.Literal(false)
-        if (match(TRUE)) return Expr.Literal(true)
-        if (match(NIL)) return Expr.Literal(null)
+    private fun primary(): Expr = when {
+        (match(FALSE)) -> Expr.Literal(false)
+        (match(TRUE)) -> Expr.Literal(true)
+        (match(NIL)) -> Expr.Literal(null)
+        (match(NUMBER, STRING)) -> Expr.Literal(previous().literal)
+        (match(THIS)) -> Expr.This(previous())
+        (match(IDENTIFIER)) -> Expr.Variable(previous())
 
-        if (match(NUMBER, STRING)) return Expr.Literal(previous().literal)
-
-        if (match(IDENTIFIER)) {
-            return Expr.Variable(previous())
-        }
-
-        if (match(LEFT_PAREN)) {
+        (match(LEFT_PAREN)) -> {
             val expr = expression()
             consume(RIGHT_PAREN, "Expect ')' after expression.")
-            return Expr.Grouping(expr)
+            Expr.Grouping(expr)
         }
 
-        throw Exception()
+        else -> throw Exception()
     }
 
     private fun match(vararg types: TokenType): Boolean {

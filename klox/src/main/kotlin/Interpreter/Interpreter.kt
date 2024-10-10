@@ -3,6 +3,8 @@ package org.example.Interpreter
 import org.example.Callable.LoxCallable
 import org.example.Callable.LoxFunction
 import org.example.Callable.Return
+import org.example.LoxClass.LoxClass
+import org.example.LoxClass.LoxInstance
 import org.example.abstractSyntaxTree.Environment
 import org.example.abstractSyntaxTree.Expr
 import org.example.abstractSyntaxTree.Stmt
@@ -74,8 +76,9 @@ class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
         return function.call(this, arguments)
     }
 
-    override fun visitGetExpr(expr: Expr.Get): Any {
-        TODO("Not yet implemented")
+    override fun visitGetExpr(expr: Expr.Get): Any? {
+        val obj = evaluate(expr.obj) as? LoxInstance ?: throw Exception("only instance can have property")
+        return obj.get(expr.name)
     }
 
     override fun visitGroupingExpr(expr: Expr.Grouping): Any? =
@@ -93,15 +96,17 @@ class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
         return evaluate(expr.right)
     }
 
-    override fun visitSetExpr(expr: Expr.Set): Any? =
-        evaluate(expr)
+    override fun visitSetExpr(expr: Expr.Set): Any? {
+        val obj = evaluate(expr.obj) as? LoxInstance ?: throw Exception("only instances have fields")
+        val value = evaluate(expr.value)
+        obj.set(expr.name, value)
+        return value
+    }
 
     override fun visitSuperExpr(expr: Expr.Super): Any? =
         evaluate(expr)
 
-    override fun visitThisExpr(expr: Expr.This): Any {
-        TODO("Not yet implemented")
-    }
+    override fun visitThisExpr(expr: Expr.This) = lookUpVariable(expr.keyword, expr)
 
     override fun visitUnaryExpr(expr: Expr.Unary): Any? {
         val right = evaluate(expr.right)
@@ -123,7 +128,7 @@ class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
         return lookUpVariable(expr.name, expr)
     }
 
-    private fun lookUpVariable(name: Token, expr: Expr.Variable): Any? {
+    private fun lookUpVariable(name: Token, expr: Expr): Any? {
         val distance = locals[expr]
         return distance?.let { environment.getAt(distance, name.lexeme) } ?: globals.get(name)
     }
@@ -133,7 +138,13 @@ class Interpreter : Expr.Visitor<Any>, Stmt.Visitor<Unit> {
     }
 
     override fun visitClassStmt(stmt: Stmt.Class) {
-        TODO("Not yet implemented")
+        environment.define(stmt.name.lexeme, null)
+
+        val methods = mutableMapOf<String, LoxFunction>()
+        stmt.methods.map { methods[it.name.lexeme] = LoxFunction(it, environment, it.name.lexeme == "init") }
+
+        val klass = LoxClass(stmt.name.lexeme, methods)
+        environment.assign(stmt.name, klass)
     }
 
     override fun visitExpressionStmt(stmt: Stmt.Expression) {

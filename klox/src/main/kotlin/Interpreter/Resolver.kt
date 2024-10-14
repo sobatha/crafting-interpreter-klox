@@ -56,7 +56,7 @@ class Resolver(private val interpreter: Interpreter) : Expr.Visitor<Unit>, Stmt.
     }
 
     override fun visitSuperExpr(expr: Expr.Super) {
-        TODO("Not yet implemented")
+        resolveLocal(expr, expr.keyword)
     }
 
     override fun visitThisExpr(expr: Expr.This) {
@@ -111,6 +111,14 @@ class Resolver(private val interpreter: Interpreter) : Expr.Visitor<Unit>, Stmt.
 
         declare(stmt.name)
         define(stmt.name)
+        if (stmt.superclass != null && stmt.superclass.name.lexeme == stmt.name.lexeme)
+            throw Error("class cannot inherit from itself")
+        stmt.superclass?.let { resolve(it) }
+
+        if (stmt.superclass != null) {
+            beginScope()
+            scopes.peek().put("super", true)
+        }
 
         beginScope()
         scopes.peek()["this"] = true
@@ -121,6 +129,8 @@ class Resolver(private val interpreter: Interpreter) : Expr.Visitor<Unit>, Stmt.
         }
 
         endScope()
+
+        stmt.superclass?.let { endScope() }
 
         currentClass = enclosingClass
     }
